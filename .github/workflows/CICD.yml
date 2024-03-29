@@ -20,8 +20,8 @@ jobs:
     - name: Build the Docker image
       run: docker build -t fyp_backend_websocketapi_image .
     - name: Stop Docker Container
-      run: docker stop fyp_backend_websockerapi_container || true  
+      run: docker stop fyp_backend_websocketapi_container || true  
     - name: Remove Old Docker Container
-      run: docker rm fyp_backend_websockerapi_container || true
+      run: docker rm fyp_backend_websocketapi_container || true
     - name: Depoly to Docker Container
-      run: docker run -d --net fyp-net -p 3010:3010 --add-host=host.docker.internal:host-gateway --restart always --name fyp_backend_websockerapi_container fyp_backend_websocketapi_image
+      run: docker run -d --net fyp-net -p 3010:3010 --add-host=host.docker.internal:host-gateway --restart always --name fyp_backend_websocketapi_container fyp_backend_websocketapi_image
