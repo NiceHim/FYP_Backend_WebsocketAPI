@@ -220,7 +220,6 @@ export async function autoTrade(ticker: string) {
                     if (transactionGroupByUser && transactionGroupByUser.length > 0) {
                         await bulkUpdateAccount(transactionGroupByUser);
                         const eligibleAccounts = await getEligibleAccount(ticker);
-                        console.log(eligibleAccounts)
                         if (eligibleAccounts && eligibleAccounts.length > 0) {
                             await insertTransaction(eligibleAccounts, tradeSignal["message"].action, tradeSignal["message"].previousClosePrice, previousCloseDate);
                             await bulkUpdateAccountBalance(eligibleAccounts);

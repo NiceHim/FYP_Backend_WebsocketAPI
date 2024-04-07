@@ -7,6 +7,7 @@ import express, { Express, NextFunction, Request, Response } from "express";
 import expressWs from 'express-ws';
 import wsRoutes, { mountWsRouter } from './src/routes/ws';
 import { updateTransactionAndAccount } from "./src/cron/updateTranscationAndAccount";
+import { autoTrade } from './src/cron/autoTrade';
 import type IQuote from "./src/models/quote"; 
 import dotenv from "dotenv";
 dotenv.config();
@@ -15,7 +16,6 @@ const APIKEY = process.env.POLYGON_IO_API_KEY || 'YOUR_API_KEY';
 const { app, getWss, applyTo } = expressWs(express());
 mountWsRouter();
 const port = process.env.PORT || 3000;
-// const router = express.Router() as expressWs.Router;
 
 connDB();
 
@@ -42,18 +42,18 @@ const updateTransactionAndAccountCronJob = new CronJob(
 	true, // start
 	'Asia/Hong_Kong' // timeZone
 );
-// const autoTradeCronJob = new CronJob(
-//     '* * 8 * * 1-5', // cronTime
-// 	async function () {
-//         const marketStatus = await polygonRestClient.reference.marketStatus();
-//         if (marketStatus.currencies?.fx == "open") {
-//             const result = await autoTrade("EURUSD");
-//         }
-// 	}, // onTick
-// 	null, // onComplete
-// 	true, // start
-// 	'Asia/Hong_Kong' // timeZone
-// )
+const autoTradeCronJob = new CronJob(
+    '* * 8 * * 1-5', // cronTime
+	async function () {
+        const marketStatus = await polygonRestClient.reference.marketStatus();
+        if (marketStatus.currencies?.fx == "open") {
+            const result = await autoTrade("EURUSD");
+        }
+	}, // onTick
+	null, // onComplete
+	true, // start
+	'Asia/Hong_Kong' // timeZone
+)
 
 
 app.use("/ws", wsRoutes);
