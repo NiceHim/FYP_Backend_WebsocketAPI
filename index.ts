@@ -43,7 +43,7 @@ const updateTransactionAndAccountCronJob = new CronJob(
 	'Asia/Hong_Kong' // timeZone
 );
 const autoTradeCronJob = new CronJob(
-    '* * 8 * * 1-5', // cronTime
+    '0 0 8 * * 1-5', // cronTime
 	async function () {
         const marketStatus = await polygonRestClient.reference.marketStatus();
         if (marketStatus.currencies?.fx == "open") {
