@@ -4,7 +4,7 @@ import { getTradeSignal } from "../api/tradeSignal";
 import ITransaction from "../models/transaction";
 import IAccount from "../models/account";
 
-async function stopTransaction(ticker: string, action: string, previousCloseDate: Date, session: ClientSession) {
+async function stopTransaction(ticker: string, action: string, previousCloseDate: Date) {
     try {
         const filter: StrictFilter<ITransaction> = {ticker: ticker, action: { $ne: action }, done: false};
         const pipeline: Array<Document> = [
@@ -15,14 +15,14 @@ async function stopTransaction(ticker: string, action: string, previousCloseDate
                 }
             }
         ];
-        const result = await collections.transcation?.updateMany(filter, pipeline, {session: session});
+        const result = await collections.transcation?.updateMany(filter, pipeline);
         return result;
     } catch (error) {
         throw error;
     }
 }
 
-async function getTransactionGroupByUser(ticker: string, previousCloseDate: Date, session: ClientSession) {
+async function getTransactionGroupByUser(ticker: string, previousCloseDate: Date) {
     try {
         const pipeline: Array<Document> = [
             {
@@ -40,14 +40,14 @@ async function getTransactionGroupByUser(ticker: string, previousCloseDate: Date
                 }
             }
         ];
-        const result = collections.transcation?.aggregate(pipeline, {session: session}).toArray();
+        const result = collections.transcation?.aggregate(pipeline).toArray();
         return result;
     } catch (error) {
         throw error;
     }
 }
 
-async function bulkUpdateAccount(data: Document[], session: ClientSession) {
+async function bulkUpdateAccount(data: Document[]) {
     try {
         let bulkUpdateList: AnyBulkWriteOperation<IAccount>[] = [];
         data.forEach(async (doc)=>{
@@ -64,17 +64,17 @@ async function bulkUpdateAccount(data: Document[], session: ClientSession) {
                 }
             });
             if (bulkUpdateList.length == 1000) {
-                await collections.account?.bulkWrite(bulkUpdateList, { ordered : false, session: session });
+                await collections.account?.bulkWrite(bulkUpdateList, { ordered : false });
                 bulkUpdateList = [];
             }
         })
-        if (bulkUpdateList.length > 0) await collections.account?.bulkWrite(bulkUpdateList, { ordered : false, session: session });
+        if (bulkUpdateList.length > 0) await collections.account?.bulkWrite(bulkUpdateList, { ordered : false });
     } catch (error) {
         throw error;
     }
 }
 
-async function getEligibleAccount(ticker: string, session: ClientSession) {
+async function getEligibleAccount(ticker: string) {
     try {
         const pipeline: Array<Document> = [
             {
@@ -147,14 +147,14 @@ async function getEligibleAccount(ticker: string, session: ClientSession) {
                 }
             }, 
         ];
-        const result = await collections.subscription?.aggregate(pipeline, {session: session}).toArray();
+        const result = await collections.subscription?.aggregate(pipeline).toArray();
         return result;
     } catch (error) {
         throw error;
     }
 }
 
-async function insertTransaction(data: Document[], action: string, previousClosePrice: number, previousCloseDate: Date, session: ClientSession) {
+async function insertTransaction(data: Document[], action: string, previousClosePrice: number, previousCloseDate: Date) {
     try {
         let insertList: OptionalId<ITransaction>[] = [];
         const lotSign = action == "buy" ? 1 : -1;
@@ -170,14 +170,14 @@ async function insertTransaction(data: Document[], action: string, previousClose
                 "createdAt": previousCloseDate
             })
         })
-        const result = await collections.transcation?.insertMany(insertList, {session: session});
+        const result = await collections.transcation?.insertMany(insertList);
         return result;
     } catch (error) {
         throw error;
     }
 }
 
-async function bulkUpdateAccountBalance(data: Document[], session: ClientSession) {
+async function bulkUpdateAccountBalance(data: Document[]) {
     try {
         let bulkUpdateList: AnyBulkWriteOperation<IAccount>[] = [];
         data.forEach(async (doc)=>{
@@ -196,7 +196,7 @@ async function bulkUpdateAccountBalance(data: Document[], session: ClientSession
                 bulkUpdateList = [];
             }
         })
-        if (bulkUpdateList.length > 0) await collections.account?.bulkWrite(bulkUpdateList, { ordered : false, session: session });
+        if (bulkUpdateList.length > 0) await collections.account?.bulkWrite(bulkUpdateList, { ordered : false });
     } catch (error) {
         throw error;
     }
@@ -205,53 +205,20 @@ async function bulkUpdateAccountBalance(data: Document[], session: ClientSession
 export async function autoTrade(ticker: string) {
     if (client) {
         const tradeSignal = await getTradeSignal(ticker);
-        const transactionOptions: TransactionOptions = {
-            readPreference: 'primary',
-            readConcern: { level: 'local' },
-            writeConcern: { w: 'majority' }
-        };
-        let result = "Autp Trade Transaction aborted";
         if (tradeSignal["message"]) {
-            result = await client.withSession(async (session) => {
-                session.withTransaction(async (session) => {
-                    const previousCloseDate = new Date(Math.round(tradeSignal["message"].previousCloseTimestamp / 1000) * 1000);
-                    await stopTransaction(ticker, tradeSignal["message"].action, tradeSignal["message"].previousClosePrice, session);
-                    const transactionGroupByUser = await getTransactionGroupByUser(ticker, previousCloseDate, session);
-                    if (transactionGroupByUser && transactionGroupByUser.length > 0) {
-                        await bulkUpdateAccount(transactionGroupByUser, session);
-                        const eligibleAccounts = await getEligibleAccount(ticker, session);
-                        if (eligibleAccounts && eligibleAccounts.length > 0) {
-                            await insertTransaction(eligibleAccounts, tradeSignal["message"].action, tradeSignal["message"].previousClosePrice, previousCloseDate, session);
-                            await bulkUpdateAccountBalance(eligibleAccounts, session);
-                        }
-                    } 
-                }, transactionOptions);
-                return "Autp Trade Transaction committed";
-            })
+           
+            const previousCloseDate = new Date(Math.round(tradeSignal["message"].previousCloseTimestamp / 1000) * 1000);
+            await stopTransaction(ticker, tradeSignal["message"].action, tradeSignal["message"].previousClosePrice);
+            const transactionGroupByUser = await getTransactionGroupByUser(ticker, previousCloseDate);
+            if (transactionGroupByUser && transactionGroupByUser.length > 0) {
+                await bulkUpdateAccount(transactionGroupByUser);
+            } 
+            const eligibleAccounts = await getEligibleAccount(ticker);
+            if (eligibleAccounts && eligibleAccounts.length > 0) {
+                await insertTransaction(eligibleAccounts, tradeSignal["message"].action, tradeSignal["message"].previousClosePrice, previousCloseDate);
+                await bulkUpdateAccountBalance(eligibleAccounts);
+            }
         }
-        // try {
-        //     const tradeSignal = await getTradeSignal(ticker);
-        //     if (tradeSignal["message"]) {
-        //         const previousCloseDate = new Date(Math.round(tradeSignal["message"].previousCloseTimestamp / 1000) * 1000);
-        //         await session.withTransaction(async () => {
-        //             await stopTransaction(ticker, tradeSignal["message"].action, tradeSignal["message"].previousClosePrice, session);
-        //             const transactionGroupByUser = await getTransactionGroupByUser(ticker, previousCloseDate, session);
-        //             if (transactionGroupByUser && transactionGroupByUser.length > 0) {
-        //                 await bulkUpdateAccount(transactionGroupByUser, session);
-        //                 const eligibleAccounts = await getEligibleAccount(ticker, session);
-        //                 if (eligibleAccounts && eligibleAccounts.length > 0) {
-        //                     await insertTransaction(eligibleAccounts, tradeSignal["message"].action, tradeSignal["message"].previousClosePrice, previousCloseDate, session);
-        //                     await bulkUpdateAccountBalance(eligibleAccounts, session);
-        //                 }
-        //             } 
-        //         }, transactionOptions);
-        //     }
-        // } catch (error) {
-        //     await session.abortTransaction();
-        //     throw error;
-        // } finally {
-        //     await session.endSession();
-        // }
-        return result;
+        return "Successful Auto Trade";
     }
 }

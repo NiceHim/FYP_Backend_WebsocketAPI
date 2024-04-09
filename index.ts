@@ -55,7 +55,6 @@ const autoTradeCronJob = new CronJob(
 	'Asia/Hong_Kong' // timeZone
 )
 
-
 app.use("/ws", wsRoutes);
 
 app.listen(port, () => {
