@@ -32,7 +32,7 @@ polygonWsClient.on("C", (quote: IQuote) => {
 })
 
 const updateTransactionAndAccountCronJob = new CronJob(
-	'*/3 * * * * *', // cronTime
+	'*/2 * * * * *', // cronTime
 	async function () {
         if (global.currentQuote) {
             const result = await limiter.schedule(()=>updateTransactionAndAccount("EURUSD", global.currentQuote.b))
