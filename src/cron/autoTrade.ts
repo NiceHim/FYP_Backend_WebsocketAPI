@@ -206,9 +206,8 @@ export async function autoTrade(ticker: string) {
     if (client) {
         const tradeSignal = await getTradeSignal(ticker);
         if (tradeSignal["message"]) {
-           
             const previousCloseDate = new Date(Math.round(tradeSignal["message"].previousCloseTimestamp / 1000) * 1000);
-            await stopTransaction(ticker, tradeSignal["message"].action, tradeSignal["message"].previousClosePrice);
+            await stopTransaction(ticker, tradeSignal["message"].action, previousCloseDate);
             const transactionGroupByUser = await getTransactionGroupByUser(ticker, previousCloseDate);
             if (transactionGroupByUser && transactionGroupByUser.length > 0) {
                 await bulkUpdateAccount(transactionGroupByUser);
