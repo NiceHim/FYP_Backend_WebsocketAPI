@@ -4,3 +4,4 @@ node_modules
 Dockerfile
 test.js
 dist
+.github
