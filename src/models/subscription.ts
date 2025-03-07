@@ -5,7 +5,7 @@ export default interface ISubscription {
     userName: string;
     ticker: string;
     lot: number;
-    status: "running" | "ended";
+    done?: boolean;
     endedAt?: Date;
     createdAt: Date;
 }

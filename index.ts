@@ -1,62 +1,88 @@
-import { CronJob } from 'cron';
-import { PolygonClient } from "./src/utils/polygonClient";
-import { restClient } from "@polygon.io/client-js";
-import { connDB } from "./src/db/conn";
-import Bottleneck from "bottleneck";
-import express, { Express, NextFunction, Request, Response } from "express";
-import expressWs from 'express-ws';
-import wsRoutes, { mountWsRouter } from './src/routes/ws';
-import { updateTransactionAndAccount } from "./src/cron/updateTranscationAndAccount";
-import { autoTrade } from './src/cron/autoTrade';
-import type IQuote from "./src/models/quote"; 
+
+import DBManager from "./src/db/DBManager";
+import { createClient } from 'redis';
+import path from 'path';
+import express, { Application } from "express";
+import { WebSocketServer } from 'ws';
+import cookieParser from 'cookie-parser';
+import { verifyToken } from './src/middlewares/verifyToken';
+import { sendUserTradingData } from './src/services/forexSocket';
+import { CustomWebSocket } from './src/types/customWebSocket';
 import dotenv from "dotenv";
-dotenv.config();
 
-const APIKEY = process.env.POLYGON_IO_API_KEY || 'YOUR_API_KEY';
-const { app, getWss, applyTo } = expressWs(express());
-mountWsRouter();
-const port = process.env.PORT || 3000;
+const env = process.env.NODE_ENV || "dev";
+dotenv.config({ path: path.resolve(__dirname, `.env.${env}`) });
 
-connDB();
+const redisURL = process.env.REDIS_URL || "redis://localhost:6379";
+const app: Application = express();
+const port = process.env.PORT || 3010;
+const wssForexQuote = new WebSocketServer(
+	{
+		noServer: true
+	}
+);
+const wssUserTrading = new WebSocketServer(
+	{
+		noServer: true
+	}
+);
 
-const limiter = new Bottleneck({
-    maxConcurrent: 1,
-    minTime: 100
-});
+wssUserTrading.on("connection", async (ws: CustomWebSocket, req) => {
+	const pingIntervalId = setInterval(() => {
+		ws.send("ping")
+	}, 10000)
+	await sendUserTradingData(ws);
 
-const polygonRestClient = restClient(APIKEY);
-const polygonWsClient = new PolygonClient({apiKey: APIKEY});
-polygonWsClient.subscribe(["C.EUR-USD"]);
-polygonWsClient.on("C", (quote: IQuote) => {
-	global.currentQuote = quote;
+	wssUserTrading.on("close", () => {
+		clearInterval(pingIntervalId);
+	})
 })
 
-const updateTransactionAndAccountCronJob = new CronJob(
-	'*/2 * * * * *', // cronTime
-	async function () {
-        if (global.currentQuote) {
-            const result = await limiter.schedule(()=>updateTransactionAndAccount("EURUSD", global.currentQuote.b))
-        }
-	}, // onTick
-	null, // onComplete
-	true, // start
-	'Asia/Hong_Kong' // timeZone
-);
-const autoTradeCronJob = new CronJob(
-    '0 0 8 * * 1-5', // cronTime
-	async function () {
-        const marketStatus = await polygonRestClient.reference.marketStatus();
-        if (marketStatus.currencies?.fx == "open") {
-            const result = await autoTrade("EURUSD");
-        }
-	}, // onTick
-	null, // onComplete
-	true, // start
-	'Asia/Hong_Kong' // timeZone
-)
+wssForexQuote.on("connection", async (ws: CustomWebSocket, req) => {
+	const pingIntervalId = setInterval(() => {
+		ws.send("ping")
+	}, 10000)
 
-app.use("/ws", wsRoutes);
+	wssForexQuote.on("close", () => {
+		clearInterval(pingIntervalId);
+	})
+})
 
-app.listen(port, () => {
-  console.log(`[server]: Server is running at http://localhost:${port}`);
-});
+const subscriber = createClient({ url: redisURL });
+subscriber.subscribe("forex.quote", (message) => {
+	wssForexQuote.clients.forEach((client) => {
+		client.send(message);
+	})
+})
+
+app.use(cookieParser());
+
+DBManager.getInstance().connDB().then(() => {
+	console.log("Database connected");
+	subscriber.connect().then(() => {
+		console.log("Redis connected");
+		const httpServer = app.listen(port, () => {
+		  console.log(`[server]: Server is running at http://localhost:${port}`);
+		});
+	
+		httpServer.on("upgrade", (req, socket, head) => {
+			if (req.url === "/ws/forex.quote.data") {
+				wssForexQuote.handleUpgrade(req, socket, head, (ws: CustomWebSocket, req) => {
+					wssForexQuote.emit("connection", ws, req);
+				})
+			} else if (req.url === "/ws/user.trading.data") {
+				wssUserTrading.handleUpgrade(req, socket, head, async (ws: CustomWebSocket, req) => {
+					const decryptedPayload = await verifyToken(req, () => {
+						socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+						socket.destroy();
+						return;
+					});
+					ws.decryptedPayload = decryptedPayload;
+					wssUserTrading.emit("connection", ws, req);
+				})
+			} else {
+				socket.destroy();
+			}
+		})
+	})
+})

@@ -1,17 +1,10 @@
-import * as ws from "ws";
-import { getEquityAndUnrealizedPnL, getCurrentTransaction } from "../utils/temp";
+import { CustomWebSocket } from "../types/customWebSocket";
+import { getEquityAndUnrealizedPnL, getCurrentTransaction } from "../db/procedures";
 
-export async function sendForexQuoteData(ws: ws) {
-    setInterval(()=>{
-        ws.send(JSON.stringify(global.currentQuote));
-    }, 1000)
-}
-
-export async function sendUserTradingData(ws: ws, decoded: any) {
+export async function sendUserTradingData(ws: CustomWebSocket) {
     setInterval(async ()=>{
-        let [equityAndUnrealizedPnL, currentTransaction] = await Promise.all([getEquityAndUnrealizedPnL(decoded.userName), getCurrentTransaction(decoded.userName)]);
+        let [equityAndUnrealizedPnL, currentTransaction] = await Promise.all([getEquityAndUnrealizedPnL(ws.decryptedPayload!.userId), getCurrentTransaction(ws.decryptedPayload!.userId)]);
         let liveTradingData = {equity: equityAndUnrealizedPnL![0].equity, unrealizedPnL: equityAndUnrealizedPnL![0].unrealizedPnL, currentTransaction: currentTransaction};
         ws.send(JSON.stringify(liveTradingData));
     }, 2000)
-    
 }

@@ -1,11 +1,11 @@
-import { StrictFilter, StrictUpdateFilter, Document, UpdateFilter, AnyBulkWriteOperation, TransactionOptions, FindOptions } from "mongodb";
-import { collections, client } from "../db/conn";
+import { StrictFilter, StrictUpdateFilter, Document, UpdateFilter, AnyBulkWriteOperation, TransactionOptions, FindOptions, ObjectId } from "mongodb";
+import DBManager from "./DBManager";
 
-export async function getCurrentTransaction(userName: string) {
+export async function getCurrentTransaction(userId: string) {
     try {
         const pipeline: Array<Document> = [
             {
-                $match: { "userName": userName, "done": false }
+                $match: { "userId": new ObjectId(userId), "done": false }
             }, 
             {
                 $project: {
@@ -22,18 +22,18 @@ export async function getCurrentTransaction(userName: string) {
                 $sort: { "createdAt": -1 }
             }
         ];
-        const result = await collections.transcation?.aggregate(pipeline).toArray();
+        const result = await DBManager.getInstance().collections.transaction?.aggregate(pipeline).toArray();
         return result;
     } catch (error) {
         throw error;
     }
 }
 
-export async function getEquityAndUnrealizedPnL(userName: string) {
+export async function getEquityAndUnrealizedPnL(userId: string) {
     try {
         const pipeline: Array<Document> = [
             {
-                $match: { "userName": userName }
+                $match: { "_id": new ObjectId(userId) }
             }, 
             {
                 $project: {
@@ -42,7 +42,7 @@ export async function getEquityAndUnrealizedPnL(userName: string) {
                 }
             }
         ];
-        const result = await collections.account?.aggregate(pipeline).toArray();
+        const result = await DBManager.getInstance().collections.user?.aggregate(pipeline).toArray();
         return result;
     } catch (error) {
         throw error;

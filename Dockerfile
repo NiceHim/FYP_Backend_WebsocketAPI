@@ -4,6 +4,6 @@ WORKDIR /fyp_backend_websocket_app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+RUN npm run build:prod
 EXPOSE 3010
 CMD ["npm", "run", "start"]

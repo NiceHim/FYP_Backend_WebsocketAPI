@@ -5,3 +5,15 @@ declare global {
 }
 
 export {}
+
+// interface IDecodedToken {
+//     userId: string
+// }
+
+// declare global {
+//     namespace Express {
+//       interface Request {
+//         decoded: IDecodedToken
+//       }
+//     }
+// }

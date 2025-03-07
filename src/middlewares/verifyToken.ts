@@ -1,22 +1,24 @@
-import { Request } from "express";
-import * as jwt from "jsonwebtoken";
-import * as ws from "ws";
-import dotenv from "dotenv";
-dotenv.config();
+import { IncomingMessage } from "http";
+import { decryptToken } from "../utils/tokenUtil";
+import { IDecryptedPayload } from "../types/customWebSocket";
+import * as cookie from "cookie";
 
-export function verifyToken(ws: ws, req: Request) {
-    let token: string;
-    let decodedToken: any;
-    if (req.headers["sec-websocket-protocol"]) {
-        token = req.headers["sec-websocket-protocol"].split(", ")[0];
-        jwt.verify(token, process.env.TOKEN_SECRET as string, (error: any, decoded: any) => {
-            if (error) {
-                ws.close();
-            }
-            decodedToken = decoded;
-        });
+export async function verifyToken(req: IncomingMessage, next: Function): Promise<IDecryptedPayload> {
+    let decryptedPayload: any;
+    const cookies = cookie.parse(req.headers.cookie || "");
+    if (cookies.token == null) {
+        return next();
     } else {
-        ws.close();
+        try {
+            const payload = await decryptToken(cookies.token);
+            if (payload == null) {
+                return next();
+            } else {
+                decryptedPayload = { userId: payload["userId"] as string };
+            }
+        } catch (error) {
+            return next();
+        }
     }
-    return decodedToken;
+    return decryptedPayload;
 }
