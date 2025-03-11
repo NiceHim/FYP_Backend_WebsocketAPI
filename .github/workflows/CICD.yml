@@ -5,23 +5,42 @@ on:
 
 jobs:
 
-  build:
+  CICD:
 
-    runs-on: self-hosted-2
+    runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - name: Add the environment file
-      run: |
-        touch .env
-        echo "${{ secrets.ENV }}" > .env
-    - name: Remove Old Docker image
-      run: docker rmi $(docker images | grep 'fyp_backend_websocketapi_image') || true
-    - name: Build the Docker image
-      run: docker build -t fyp_backend_websocketapi_image .
-    - name: Stop Docker Container
-      run: docker stop fyp_backend_websocketapi_container || true  
-    - name: Remove Old Docker Container
-      run: docker rm fyp_backend_websocketapi_container || true
-    - name: Depoly to Docker Container
-      run: docker run -d --net fyp-net -p 3010:3010 --add-host=host.docker.internal:host-gateway --restart always --name fyp_backend_websocketapi_container fyp_backend_websocketapi_image
+      - name: Checkout Repository 
+        uses: actions/checkout@v4
+
+      - name: Add the environment file
+        run: |
+          touch .env.production
+          echo "${{ secrets.ENV }}" > .env.production
+          
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with: 
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }} 
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1
+
+      - name: Build and Push to Docker Hub
+        uses: docker/build-push-action@v6
+        with:   
+          context: .
+          platforms: linux/amd64, linux/arm64
+          push: true
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/fyp_websocket_server:latest
+      
+      - name: Deploy to ECS
+        run: aws ecs update-service --cluster ${{ vars.ECS_CLUSTER_NAME }} --service ${{ vars.ECS_SERVICE_NAME }} --force-new-deployment
